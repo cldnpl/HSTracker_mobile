@@ -13,8 +13,12 @@ import com.hstracker.android.deck.Deck
 import com.hstracker.android.deck.DeckCode
 import com.hstracker.android.game.GameSession
 import com.hstracker.android.game.GameState
+import com.hstracker.android.recognition.DHash
 import com.hstracker.android.recognition.HashIndexer
 import com.hstracker.android.recognition.RecognitionState
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -153,6 +157,36 @@ class DeckImportViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resolveCardName(dbfId: Int): String? = cards.lookup(dbfId)?.name
+
+    /**
+     * Modalità test: decodifica un'immagine dall'URI scelto dall'utente e la
+     * passa al recognizer. Non entra in gioco MediaProjection: serve a validare
+     * il pipeline in assenza di Hearthstone/emulatore.
+     */
+    fun recognizeFromUri(uri: Uri) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val bmp = getApplication<android.app.Application>().contentResolver
+                .openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+            if (bmp == null) {
+                RecognitionState.finishIndexing("Immagine non leggibile.")
+                return@launch
+            }
+            val hash = DHash.compute(bmp)
+            val match = RecognitionState.recognizer.recognize(hash)
+            bmp.recycle()
+            if (match == null) {
+                RecognitionState.finishIndexing(
+                    "Nessun match. Indice vuoto o distanza troppo alta.",
+                )
+            } else {
+                // Nome viene risolto dalla UI.
+                RecognitionState.onRecognized(match.dbfId, name = "", distance = match.distance)
+                RecognitionState.finishIndexing(
+                    "Match: dbfId ${match.dbfId} · d=${match.distance} · margine ${match.marginOverSecond}",
+                )
+            }
+        }
+    }
 
     /** Applica un archetipo scelto dal picker: imposta il codice avversario e lo importa. */
     fun applyOpponentArchetype(archetype: Archetype) {

@@ -89,6 +89,12 @@ fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
             CaptureService.start(context, result.resultCode, data)
         }
     }
+
+    val testImageLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) vm.recognizeFromUri(uri)
+    }
     val captureRunning by CaptureState.running.collectAsState()
     val frameCount by CaptureState.frameCount.collectAsState()
     val lastFrame by CaptureState.lastFrameWxH.collectAsState()
@@ -207,6 +213,10 @@ fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
                 onClick = { vm.prepareRecognition() },
                 enabled = state.player.deck != null && !indexing.inProgress,
             ) { Text("Prepara indice") }
+            OutlinedButton(
+                onClick = { testImageLauncher.launch("image/*") },
+                enabled = !indexing.inProgress,
+            ) { Text("Testa da file") }
         }
         if (indexing.inProgress || indexing.total > 0) {
             Text(
