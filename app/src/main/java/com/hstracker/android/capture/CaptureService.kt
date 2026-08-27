@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -20,6 +21,8 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.util.DisplayMetrics
 import com.hstracker.android.MainActivity
+import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Fase 2 — Iterazione 1: infrastruttura di cattura schermo.
@@ -37,6 +40,10 @@ class CaptureService : Service() {
     private lateinit var backgroundThread: HandlerThread
     private lateinit var backgroundHandler: Handler
     private var lastFrameNs = 0L
+    private var lastCropSaveNs = 0L
+    private var reusableBitmap: Bitmap? = null
+    private val roi = RoiConfig.DEFAULT
+    private val cropFile: File by lazy { File(cacheDir, "last_crop.png") }
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -121,8 +128,39 @@ class CaptureService : Service() {
             if (now - lastFrameNs < MIN_FRAME_INTERVAL_NS) return
             lastFrameNs = now
             CaptureState.onFrame(image.width, image.height)
-            // Iterazione 2+: qui verrà eseguito il crop della "carta appena pescata"
-            // e l'image matching contro il DB degli artwork.
+
+            // Ogni ~1s salvo il crop della ROI per debugging.
+            if (now - lastCropSaveNs < CROP_SAVE_INTERVAL_NS) return
+            val plane = image.planes.getOrNull(0) ?: return
+            val pixelStride = plane.pixelStride
+            val rowStride = plane.rowStride
+            val rowPadding = rowStride - pixelStride * image.width
+            val paddedWidth = image.width + rowPadding / pixelStride
+
+            val bmp = reusableBitmap?.takeIf {
+                it.width == paddedWidth && it.height == image.height
+            } ?: run {
+                reusableBitmap?.recycle()
+                Bitmap.createBitmap(paddedWidth, image.height, Bitmap.Config.ARGB_8888)
+                    .also { reusableBitmap = it }
+            }
+            bmp.copyPixelsFromBuffer(plane.buffer)
+
+            val rect = roi.toRect(image.width, image.height)
+            if (rect.width() <= 0 || rect.height() <= 0) return
+            val cropped = Bitmap.createBitmap(bmp, rect.left, rect.top, rect.width(), rect.height())
+            try {
+                FileOutputStream(cropFile).use { out ->
+                    cropped.compress(Bitmap.CompressFormat.PNG, 90, out)
+                }
+                CaptureState.onCropSaved(cropFile.absolutePath, cropped.width, cropped.height)
+                lastCropSaveNs = now
+            } finally {
+                cropped.recycle()
+            }
+        } catch (t: Throwable) {
+            // In caso di problemi (buffer sconosciuto, formato imprevisto)
+            // meglio ignorare il frame che crashare il service.
         } finally {
             image.close()
         }
@@ -171,6 +209,8 @@ class CaptureService : Service() {
         virtualDisplay = null
         imageReader?.close()
         imageReader = null
+        reusableBitmap?.recycle()
+        reusableBitmap = null
         projection?.let {
             runCatching { it.unregisterCallback(projectionCallback) }
             it.stop()
@@ -197,6 +237,7 @@ class CaptureService : Service() {
         private const val CHANNEL_ID = "hstracker_capture"
         private const val NOTIF_ID = 2
         private const val MIN_FRAME_INTERVAL_NS = 500_000_000L  // ~2 FPS
+        private const val CROP_SAVE_INTERVAL_NS = 1_000_000_000L // 1 crop/s
 
         fun start(context: Context, resultCode: Int, data: Intent) {
             val intent = Intent(context, CaptureService::class.java)

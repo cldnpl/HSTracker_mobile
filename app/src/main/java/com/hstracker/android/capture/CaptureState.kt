@@ -20,6 +20,10 @@ object CaptureState {
     private val _lastFrameWxH = MutableStateFlow<Pair<Int, Int>?>(null)
     val lastFrameWxH: StateFlow<Pair<Int, Int>?> = _lastFrameWxH.asStateFlow()
 
+    /** Path assoluto dell'ultimo crop salvato + timestamp per invalidare la cache Compose. */
+    private val _lastCrop = MutableStateFlow<CropInfo?>(null)
+    val lastCrop: StateFlow<CropInfo?> = _lastCrop.asStateFlow()
+
     fun setRunning(value: Boolean) { _running.value = value }
 
     fun onFrame(width: Int, height: Int) {
@@ -27,8 +31,20 @@ object CaptureState {
         _lastFrameWxH.value = width to height
     }
 
+    fun onCropSaved(path: String, w: Int, h: Int) {
+        _lastCrop.value = CropInfo(path = path, width = w, height = h, timestamp = System.currentTimeMillis())
+    }
+
     fun reset() {
         _frameCount.value = 0
         _lastFrameWxH.value = null
+        _lastCrop.value = null
     }
 }
+
+data class CropInfo(
+    val path: String,
+    val width: Int,
+    val height: Int,
+    val timestamp: Long,
+)

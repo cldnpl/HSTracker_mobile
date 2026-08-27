@@ -47,7 +47,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.app.Activity
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.media.projection.MediaProjectionManager
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import com.hstracker.android.capture.CaptureService
 import com.hstracker.android.capture.CaptureState
 import com.hstracker.android.overlay.OverlayService
@@ -85,6 +91,7 @@ fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
     val captureRunning by CaptureState.running.collectAsState()
     val frameCount by CaptureState.frameCount.collectAsState()
     val lastFrame by CaptureState.lastFrameWxH.collectAsState()
+    val lastCrop by CaptureState.lastCrop.collectAsState()
 
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -201,6 +208,26 @@ fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium,
             )
+        }
+        lastCrop?.let { info ->
+            Text(
+                "Ultimo crop ROI: ${info.width}×${info.height}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            val bitmap = remember(info.timestamp) {
+                BitmapFactory.decodeFile(info.path)
+            }
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "Anteprima ROI",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(6.dp)),
+                )
+            }
         }
     }
 }
