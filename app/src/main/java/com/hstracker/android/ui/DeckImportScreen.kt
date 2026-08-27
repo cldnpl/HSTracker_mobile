@@ -118,6 +118,9 @@ fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
             onImport = { vm.importOpponent(state.opponent.code) },
         )
 
+        Spacer(Modifier.height(8.dp))
+        ManualOpponentPicker(vm = vm)
+
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
 
         // --- Avvio partita ---

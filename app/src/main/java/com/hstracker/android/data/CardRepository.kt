@@ -36,6 +36,21 @@ class CardRepository(
 
     fun lookup(dbfId: Int): Card? = byDbfId[dbfId]
 
+    /**
+     * Ricerca case-insensitive nel nome della carta. Ritorna al più [limit] risultati,
+     * ordinati per costo poi nome. Se [query] è vuota ritorna lista vuota (non spammiamo).
+     */
+    fun searchByName(query: String, limit: Int = 20): List<Card> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        val needle = q.lowercase()
+        return byDbfId.values.asSequence()
+            .filter { it.name.isNotBlank() && needle in it.name.lowercase() }
+            .sortedWith(compareBy({ it.cost ?: Int.MAX_VALUE }, { it.name }))
+            .take(limit)
+            .toList()
+    }
+
     private fun fetch(): List<Card> {
         val url = "https://api.hearthstonejson.com/v1/latest/$locale/cards.collectible.json"
         val request = Request.Builder().url(url).build()

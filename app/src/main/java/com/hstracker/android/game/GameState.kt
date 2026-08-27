@@ -48,5 +48,26 @@ data class GameState(
             )
             return GameState(tracked)
         }
+
+        /**
+         * Costruisce lo stato per la modalità manuale: partiamo dal presupposto
+         * che l'avversario abbia [defaultCopies] copie di ognuna delle carte
+         * selezionate. Il tap nell'overlay decrementa il contatore al passare
+         * delle giocate.
+         */
+        fun fromManualPicks(cards: List<Card>, defaultCopies: Int = 2): GameState {
+            val tracked = cards.map { c ->
+                TrackedCard(
+                    dbfId = c.dbfId,
+                    name = c.name.ifBlank { "dbfId ${c.dbfId}" },
+                    cost = c.cost,
+                    initial = defaultCopies,
+                    remaining = defaultCopies,
+                )
+            }.sortedWith(
+                compareBy({ it.cost ?: Int.MAX_VALUE }, { it.name })
+            )
+            return GameState(tracked)
+        }
     }
 }

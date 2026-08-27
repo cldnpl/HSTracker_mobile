@@ -43,6 +43,16 @@ class DeckImportViewModel(app: Application) : AndroidViewModel(app) {
     private val _archetypesForClass = MutableStateFlow<List<Archetype>>(emptyList())
     val archetypesForClass: StateFlow<List<Archetype>> = _archetypesForClass.asStateFlow()
 
+    private val _opponentQuery = MutableStateFlow("")
+    val opponentQuery: StateFlow<String> = _opponentQuery.asStateFlow()
+
+    private val _opponentSearchResults = MutableStateFlow<List<Card>>(emptyList())
+    val opponentSearchResults: StateFlow<List<Card>> = _opponentSearchResults.asStateFlow()
+
+    /** Carte aggiunte a mano come "l'avversario le ha nel deck" (fallback manuale). */
+    private val _manualOpponent = MutableStateFlow<List<Card>>(emptyList())
+    val manualOpponent: StateFlow<List<Card>> = _manualOpponent.asStateFlow()
+
     private val _state = MutableStateFlow(
         DeckUiState(
             player = DeckSideUiState(code = prefs.getString(KEY_PLAYER_CODE, "") ?: ""),
@@ -102,6 +112,26 @@ class DeckImportViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun updateOpponentQuery(query: String) {
+        _opponentQuery.value = query
+        viewModelScope.launch {
+            cards.ensureLoaded()
+            _opponentSearchResults.value = cards.searchByName(query, limit = 12)
+        }
+    }
+
+    fun addManualOpponent(card: Card) {
+        if (_manualOpponent.value.none { it.dbfId == card.dbfId }) {
+            _manualOpponent.value = _manualOpponent.value + card
+        }
+    }
+
+    fun removeManualOpponent(dbfId: Int) {
+        _manualOpponent.value = _manualOpponent.value.filterNot { it.dbfId == dbfId }
+    }
+
+    fun clearManualOpponent() { _manualOpponent.value = emptyList() }
+
     /** Applica un archetipo scelto dal picker: imposta il codice avversario e lo importa. */
     fun applyOpponentArchetype(archetype: Archetype) {
         importOpponent(archetype.deckCode)
@@ -113,12 +143,21 @@ class DeckImportViewModel(app: Application) : AndroidViewModel(app) {
         GameSession.clearOpponent()
     }
 
-    /** Popola GameSession con i deck attuali. Il player è obbligatorio. */
+    /**
+     * Popola GameSession con i deck attuali. Il player è obbligatorio.
+     * Per l'avversario, in ordine di preferenza:
+     *  1. deck code importato (probabile archetipo)
+     *  2. lista manuale di carte viste (fallback quando non sai il mazzo)
+     */
     fun startGameSession(): Boolean {
         val playerDeck = _state.value.player.deck ?: return false
         GameSession.startPlayer(GameState.fromDeck(playerDeck, cards))
-        _state.value.opponent.deck?.let { opp ->
-            GameSession.startOpponent(GameState.fromDeck(opp, cards))
+        val opponentDeck = _state.value.opponent.deck
+        val manual = _manualOpponent.value
+        when {
+            opponentDeck != null -> GameSession.startOpponent(GameState.fromDeck(opponentDeck, cards))
+            manual.isNotEmpty() -> GameSession.startOpponent(GameState.fromManualPicks(manual))
+            else -> GameSession.clearOpponent()
         }
         return true
     }
