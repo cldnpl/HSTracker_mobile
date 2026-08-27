@@ -1,0 +1,12 @@
+{
+  "_readme": "Archetipi meta usati per suggerire il mazzo probabile dell'avversario. Aggiornare a mano dalla tier list corrente (fonte consigliata: https://hsreplay.net/decks/). Per ogni archetipo serve la stringa base64 del deck code, gli stessi che accetta la schermata Importa.",
+  "archetypes": [
+    {
+      "id": "pirate-warrior-standard-2025",
+      "name": "Pirate Warrior",
+      "class": "WARRIOR",
+      "format": "STANDARD",
+      "deckCode": "AAECAQcE69YHstgHpeAHq+AHDa+gBOPmBqWFB+iHB5XCB5vCB5zCB6bgB6fgB6jgB6ngB/DgB/vgBwAA"
+    }
+  ]
+}

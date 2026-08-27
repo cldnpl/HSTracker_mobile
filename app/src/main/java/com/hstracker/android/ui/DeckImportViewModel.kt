@@ -4,8 +4,11 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.hstracker.android.data.Archetype
+import com.hstracker.android.data.ArchetypeRepository
 import com.hstracker.android.data.Card
 import com.hstracker.android.data.CardRepository
+import com.hstracker.android.data.HeroClass
 import com.hstracker.android.deck.Deck
 import com.hstracker.android.deck.DeckCode
 import com.hstracker.android.game.GameSession
@@ -34,7 +37,11 @@ data class DeckUiState(
 class DeckImportViewModel(app: Application) : AndroidViewModel(app) {
 
     private val cards = CardRepository()
+    private val archetypes = ArchetypeRepository(app)
     private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private val _archetypesForClass = MutableStateFlow<List<Archetype>>(emptyList())
+    val archetypesForClass: StateFlow<List<Archetype>> = _archetypesForClass.asStateFlow()
 
     private val _state = MutableStateFlow(
         DeckUiState(
@@ -87,6 +94,17 @@ class DeckImportViewModel(app: Application) : AndroidViewModel(app) {
     private inline fun setSide(isPlayer: Boolean, block: () -> DeckSideUiState) {
         _state.value = if (isPlayer) _state.value.copy(player = block())
         else _state.value.copy(opponent = block())
+    }
+
+    fun loadArchetypesFor(hero: HeroClass) {
+        viewModelScope.launch {
+            _archetypesForClass.value = archetypes.forClass(hero)
+        }
+    }
+
+    /** Applica un archetipo scelto dal picker: imposta il codice avversario e lo importa. */
+    fun applyOpponentArchetype(archetype: Archetype) {
+        importOpponent(archetype.deckCode)
     }
 
     fun clearOpponent() {

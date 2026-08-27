@@ -52,6 +52,11 @@ fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
     val state by vm.state.collectAsState()
     val context = LocalContext.current
     var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var showOpponentPicker by remember { mutableStateOf(false) }
+
+    if (showOpponentPicker) {
+        OpponentPickerDialog(vm = vm, onDismiss = { showOpponentPicker = false })
+    }
 
     val overlaySettingsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -98,14 +103,19 @@ fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
 
         // --- Avversario ---
         SectionTitle("Avversario (probabile)", accent = Color(0xFFEF9A9A))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { showOpponentPicker = true }) {
+                Text("Scegli da archetipi meta")
+            }
+            if (state.opponent.deck != null || state.opponent.code.isNotBlank()) {
+                TextButton(onClick = vm::clearOpponent) { Text("Rimuovi") }
+            }
+        }
         DeckImportBlock(
-            label = "Deck code avversario (opzionale)",
+            label = "…oppure incolla un deck code",
             side = state.opponent,
             onCodeChange = vm::updateOpponentCode,
             onImport = { vm.importOpponent(state.opponent.code) },
-            secondaryAction = if (state.opponent.deck != null || state.opponent.code.isNotBlank()) {
-                { TextButton(onClick = vm::clearOpponent) { Text("Rimuovi") } }
-            } else null,
         )
 
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
