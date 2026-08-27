@@ -57,6 +57,7 @@ import androidx.compose.ui.layout.ContentScale
 import com.hstracker.android.capture.CaptureService
 import com.hstracker.android.capture.CaptureState
 import com.hstracker.android.overlay.OverlayService
+import com.hstracker.android.recognition.RecognitionState
 
 @Composable
 fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
@@ -92,6 +93,8 @@ fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
     val frameCount by CaptureState.frameCount.collectAsState()
     val lastFrame by CaptureState.lastFrameWxH.collectAsState()
     val lastCrop by CaptureState.lastCrop.collectAsState()
+    val indexing by RecognitionState.indexing.collectAsState()
+    val lastRecognized by RecognitionState.lastRecognition.collectAsState()
 
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -200,6 +203,28 @@ fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
                     Text("Ferma riconoscimento")
                 }
             }
+            OutlinedButton(
+                onClick = { vm.prepareRecognition() },
+                enabled = state.player.deck != null && !indexing.inProgress,
+            ) { Text("Prepara indice") }
+        }
+        if (indexing.inProgress || indexing.total > 0) {
+            Text(
+                "Indice hash: ${indexing.done}/${indexing.total}" +
+                    (if (indexing.failed > 0) " (falliti ${indexing.failed})" else "") +
+                    (indexing.message?.let { " · $it" } ?: ""),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+        lastRecognized?.let { lr ->
+            val name = lr.name.ifBlank { vm.resolveCardName(lr.dbfId) ?: "dbfId ${lr.dbfId}" }
+            Text(
+                "Ultima riconosciuta: $name (d=${lr.distance})",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
         if (captureRunning) {
             Text(

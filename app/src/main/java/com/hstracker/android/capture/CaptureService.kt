@@ -21,6 +21,8 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.util.DisplayMetrics
 import com.hstracker.android.MainActivity
+import com.hstracker.android.game.GameSession
+import com.hstracker.android.recognition.RecognitionState
 import java.io.File
 import java.io.FileOutputStream
 
@@ -44,6 +46,7 @@ class CaptureService : Service() {
     private var reusableBitmap: Bitmap? = null
     private val roi = RoiConfig.DEFAULT
     private val cropFile: File by lazy { File(cacheDir, "last_crop.png") }
+    private val lastDispatchByDbfId = HashMap<Int, Long>()
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -150,6 +153,14 @@ class CaptureService : Service() {
             if (rect.width() <= 0 || rect.height() <= 0) return
             val cropped = Bitmap.createBitmap(bmp, rect.left, rect.top, rect.width(), rect.height())
             try {
+                // 1) Riconoscimento: se il recognizer è popolato prova a matchare
+                //    e, se distanza + margine sono buoni, decrementa il tracker.
+                val recognition = RecognitionState.recognizer.recognize(cropped)
+                if (recognition != null && recognition.marginOverSecond >= MIN_MARGIN) {
+                    maybeDispatchRecognition(recognition.dbfId, recognition.distance, now)
+                }
+
+                // 2) Salvataggio crop per debugging (~1 Hz).
                 FileOutputStream(cropFile).use { out ->
                     cropped.compress(Bitmap.CompressFormat.PNG, 90, out)
                 }
@@ -203,6 +214,16 @@ class CaptureService : Service() {
         }
     }
 
+    private fun maybeDispatchRecognition(dbfId: Int, distance: Int, nowNs: Long) {
+        val lastNs = lastDispatchByDbfId[dbfId]
+        if (lastNs != null && nowNs - lastNs < DISPATCH_DEBOUNCE_NS) return
+        val applied = GameSession.tryPlayerRecognized(dbfId)
+        if (!applied) return
+        lastDispatchByDbfId[dbfId] = nowNs
+        // Il nome viene risolto in UI dove CardRepository è già caricato.
+        RecognitionState.onRecognized(dbfId, name = "", distance = distance)
+    }
+
     private fun teardown() {
         CaptureState.setRunning(false)
         virtualDisplay?.release()
@@ -238,6 +259,8 @@ class CaptureService : Service() {
         private const val NOTIF_ID = 2
         private const val MIN_FRAME_INTERVAL_NS = 500_000_000L  // ~2 FPS
         private const val CROP_SAVE_INTERVAL_NS = 1_000_000_000L // 1 crop/s
+        private const val DISPATCH_DEBOUNCE_NS = 3_000_000_000L  // 3s per stesso dbfId
+        private const val MIN_MARGIN = 4                          // second_best - best
 
         fun start(context: Context, resultCode: Int, data: Intent) {
             val intent = Intent(context, CaptureService::class.java)

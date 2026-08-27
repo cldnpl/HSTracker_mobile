@@ -32,4 +32,17 @@ object GameSession {
 
     fun onOpponentCardSeen(dbfId: Int) { _opponent.value = _opponent.value?.decrement(dbfId) }
     fun onOpponentUndoSeen(dbfId: Int) { _opponent.value = _opponent.value?.increment(dbfId) }
+
+    /**
+     * Chiamata dalla pipeline di riconoscimento visivo: decrementa il tracker
+     * del giocatore se la carta esiste nel suo mazzo con copie residue > 0.
+     * Ritorna true se ha applicato la modifica.
+     */
+    fun tryPlayerRecognized(dbfId: Int): Boolean {
+        val p = _player.value ?: return false
+        val hasRemaining = p.cards.any { it.dbfId == dbfId && it.remaining > 0 }
+        if (!hasRemaining) return false
+        _player.value = p.decrement(dbfId)
+        return true
+    }
 }

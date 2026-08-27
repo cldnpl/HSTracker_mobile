@@ -13,6 +13,8 @@ import com.hstracker.android.deck.Deck
 import com.hstracker.android.deck.DeckCode
 import com.hstracker.android.game.GameSession
 import com.hstracker.android.game.GameState
+import com.hstracker.android.recognition.HashIndexer
+import com.hstracker.android.recognition.RecognitionState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +40,7 @@ class DeckImportViewModel(app: Application) : AndroidViewModel(app) {
 
     private val cards = CardRepository()
     private val archetypes = ArchetypeRepository(app)
+    private val indexer = HashIndexer()
     private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     private val _archetypesForClass = MutableStateFlow<List<Archetype>>(emptyList())
@@ -131,6 +134,25 @@ class DeckImportViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearManualOpponent() { _manualOpponent.value = emptyList() }
+
+    /**
+     * Scarica gli artwork del mazzo del giocatore e ne calcola il dHash,
+     * popolando [RecognitionState.recognizer]. L'avversario resta escluso
+     * perché la ROI attuale inquadra la carta appena pescata da noi.
+     */
+    fun prepareRecognition() {
+        val playerCards = _state.value.player.resolved.mapNotNull { it.card }
+        if (playerCards.isEmpty()) {
+            RecognitionState.finishIndexing("Nessuna carta: importa prima il tuo mazzo.")
+            return
+        }
+        viewModelScope.launch {
+            RecognitionState.recognizer.clear()
+            indexer.index(playerCards)
+        }
+    }
+
+    fun resolveCardName(dbfId: Int): String? = cards.lookup(dbfId)?.name
 
     /** Applica un archetipo scelto dal picker: imposta il codice avversario e lo importa. */
     fun applyOpponentArchetype(archetype: Archetype) {
