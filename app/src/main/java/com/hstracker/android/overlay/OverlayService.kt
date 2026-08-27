@@ -55,6 +55,7 @@ class OverlayService : Service(),
     override fun onCreate() {
         super.onCreate()
         savedStateController.performRestore(null)
+        OverlayPrefs.init(this)
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
     }
 
@@ -99,8 +100,8 @@ class OverlayService : Service(),
             y = 120
         }
 
-        // Consenti il drag dell'overlay: gestione touch minima.
-        view.setOnTouchListener(DragTouchListener(wm, params))
+        // Drag con un dito, pinch-to-resize con due.
+        view.setOnTouchListener(OverlayTouchController(wm, view, params))
 
         wm.addView(view, params)
         windowManager = wm
@@ -189,33 +190,80 @@ class OverlayService : Service(),
     }
 }
 
-private class DragTouchListener(
+/**
+ * Gestione touch dell'overlay:
+ * - un dito che si sposta > 20px → drag della finestra
+ * - due dita → pinch che aggiorna [OverlayPrefs.scale]
+ * - tap breve con un dito → passa al Compose sottostante (tocca la carta)
+ */
+private class OverlayTouchController(
     private val wm: WindowManager,
+    private val view: android.view.View,
     private val params: WindowManager.LayoutParams,
-) : View.OnTouchListener {
+) : android.view.View.OnTouchListener {
+
+    private val scaleDetector = android.view.ScaleGestureDetector(view.context, ScaleListener()).apply {
+        isQuickScaleEnabled = false
+    }
+
     private var startX = 0
     private var startY = 0
     private var touchX = 0f
     private var touchY = 0f
+    private var isDragging = false
+    private var isPinching = false
 
-    override fun onTouch(v: View, event: android.view.MotionEvent): Boolean {
-        return when (event.action) {
+    override fun onTouch(v: android.view.View, event: android.view.MotionEvent): Boolean {
+        // Il ScaleGestureDetector va sempre alimentato per riconoscere il pinch.
+        scaleDetector.onTouchEvent(event)
+
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.pointerCount >= 2) {
+                    isPinching = true
+                    isDragging = false
+                    return true
+                }
+            }
+            android.view.MotionEvent.ACTION_POINTER_UP -> {
+                if (event.pointerCount <= 2) isPinching = false
+                return true
+            }
             android.view.MotionEvent.ACTION_DOWN -> {
                 startX = params.x; startY = params.y
                 touchX = event.rawX; touchY = event.rawY
-                false // lascia passare al Compose (tap sulle carte)
+                isDragging = false
+                // Lascio passare il tocco al Compose sottostante: solo quando
+                // sposto oltre soglia divento drag.
+                return false
             }
             android.view.MotionEvent.ACTION_MOVE -> {
+                if (isPinching) return true
                 val dx = (event.rawX - touchX).toInt()
                 val dy = (event.rawY - touchY).toInt()
-                if (kotlin.math.abs(dx) > 20 || kotlin.math.abs(dy) > 20) {
+                if (isDragging || kotlin.math.abs(dx) > 20 || kotlin.math.abs(dy) > 20) {
+                    isDragging = true
                     params.x = startX + dx
                     params.y = startY + dy
                     wm.updateViewLayout(v, params)
-                    true
-                } else false
+                    return true
+                }
+                return false
             }
-            else -> false
+            android.view.MotionEvent.ACTION_UP,
+            android.view.MotionEvent.ACTION_CANCEL -> {
+                isPinching = false
+                isDragging = false
+                return false
+            }
+        }
+        return false
+    }
+
+    private inner class ScaleListener : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+            OverlayPrefs.applyScaleFactor(detector.scaleFactor)
+            return true
         }
     }
 }
