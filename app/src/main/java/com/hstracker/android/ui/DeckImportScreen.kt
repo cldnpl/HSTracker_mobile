@@ -45,6 +45,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.app.Activity
+import android.content.Context
+import android.media.projection.MediaProjectionManager
+import com.hstracker.android.capture.CaptureService
+import com.hstracker.android.capture.CaptureState
 import com.hstracker.android.overlay.OverlayService
 
 @Composable
@@ -68,6 +73,18 @@ fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
     val notifPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* nice-to-have */ }
+
+    val captureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val data = result.data
+        if (result.resultCode == Activity.RESULT_OK && data != null) {
+            CaptureService.start(context, result.resultCode, data)
+        }
+    }
+    val captureRunning by CaptureState.running.collectAsState()
+    val frameCount by CaptureState.frameCount.collectAsState()
+    val lastFrame by CaptureState.lastFrameWxH.collectAsState()
 
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -151,6 +168,38 @@ fun DeckImportScreen(vm: DeckImportViewModel = viewModel()) {
                 "Serve il permesso \"Sovrapponi ad altre app\" per l'overlay durante il gioco.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
+            )
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+
+        // --- Fase 2 (beta): riconoscimento carte via MediaProjection ---
+        SectionTitle("Riconoscimento carte (beta)", accent = Color(0xFF80DEEA))
+        Text(
+            "Infrastruttura di cattura schermo. Iterazione 1: verifica che i frame " +
+                "arrivino. Le iterazioni successive aggiungeranno il matching della carta " +
+                "pescata contro il DB artwork.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!captureRunning) {
+                Button(onClick = {
+                    val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+                        as MediaProjectionManager
+                    captureLauncher.launch(mpm.createScreenCaptureIntent())
+                }) { Text("Attiva riconoscimento") }
+            } else {
+                OutlinedButton(onClick = { CaptureService.stop(context) }) {
+                    Text("Ferma riconoscimento")
+                }
+            }
+        }
+        if (captureRunning) {
+            Text(
+                "Cattura attiva • frame ricevuti: $frameCount" +
+                    (lastFrame?.let { " • ultimo: ${it.first}×${it.second}" } ?: ""),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
             )
         }
     }
